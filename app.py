@@ -6,9 +6,9 @@ import os
 
 import google.generativeai as genai
 
-
+load_dotenv()
 # Fetch the API key from the environment variable
-GOOGLE_API_KEY = 'AIzaSyD6H-J3M4lOVNH12IoT0AqUPV2wKT2wSKM'
+GOOGLE_API_KEY =  os.getenv("GOOGLE_API__KEY")
 
 if not GOOGLE_API_KEY:
     raise ValueError("No API key found. Please set the GOOGLE_API_KEY environment variable.")
@@ -24,7 +24,7 @@ model= genai.GenerativeModel("gemini-1.5-flash")
 
 
 # Load environment variables from .env file
-load_dotenv()
+
 
 # Get the Hugging Face API token from the environment
 huggingfacehub_api_token = os.getenv("HUGGINGFACEHUB_API_TOKEN")

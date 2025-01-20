@@ -1,83 +1,61 @@
+import streamlit as st
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-from huggingface_hub import InferenceClient  # Use InferenceClient
+from huggingface_hub import InferenceClient
 from dotenv import load_dotenv
 import os
-
 import google.generativeai as genai
+from PyPDF2 import PdfReader
 
+# Load environment variables
 load_dotenv()
-# Fetch the API key from the environment variable
-GOOGLE_API_KEY =  os.getenv("GOOGLE_API__KEY")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API__KEY")
+HUGGINGFACEHUB_API_TOKEN = os.getenv("HUGGINGFACEHUB_API_TOKEN")
 
-if not GOOGLE_API_KEY:
-    raise ValueError("No API key found. Please set the GOOGLE_API_KEY environment variable.")
+# API Configuration
+if not GOOGLE_API_KEY or not HUGGINGFACEHUB_API_TOKEN:
+    st.error("API keys are missing. Please configure them in the .env file.")
+    st.stop()
 
-# Initialize the API with the fetched key
 genai.configure(api_key=GOOGLE_API_KEY)
-
-
-model= genai.GenerativeModel("gemini-1.5-flash")
-
-
-
-
-
-# Load environment variables from .env file
-
-
-# Get the Hugging Face API token from the environment
-huggingfacehub_api_token = os.getenv("HUGGINGFACEHUB_API_TOKEN")
-if not huggingfacehub_api_token:
-    raise ValueError("Please set the HUGGINGFACEHUB_API_TOKEN in the .env file.")
-
-# Initialize the embedding model for the knowledge base
+model = genai.GenerativeModel("gemini-1.5-flash")
 embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
 
-# Create a knowledge base with FAISS
-documents = [
-    "The moon is Earth's only natural satellite.",
-    "Love is a strong positive emotion of deep affection.",
-    "Ernest Hemingway was an American novelist and short-story writer."
-]
-vectorstore = FAISS.from_texts(documents, embedding=embedding_model)
+# Initialize the knowledge base
+vectorstore = None
 
-# Initialize the Hugging Face Inference Client
-model_name = "facebook/blenderbot-400M-distill"  # Use a conversational model
-inference_client = InferenceClient(model=model_name, token=huggingfacehub_api_token)
+# Load PDF and create knowledge base
+def load_pdf_to_knowledge_base(pdf_file):
+    global vectorstore
+    reader = PdfReader(pdf_file)
+    texts = [page.extract_text() for page in reader.pages]
+    vectorstore = FAISS.from_texts(texts, embedding=embedding_model)
+    st.success("PDF uploaded and knowledge base created!")
 
-# Function to retrieve relevant documents
+# Retrieve documents
 def retrieve_documents(query, k=2):
     retriever = vectorstore.as_retriever(search_kwargs={"k": k})
-    return retriever.invoke(query)  # Use invoke instead of get_relevant_documents
+    return retriever.invoke(query)
 
-# Function to generate a response using the Inference Client
+# Generate response
 def generate_response(query, context):
-    prompt = f"You are a helpful AI assistant. Use the following context to answer the user's question:\n\nContext: {context}\n\nQuestion: {query}\nAnswer:"
-    print("Prompt sent to the model:", prompt)  # Debugging: Print the prompt
+    prompt = f"You are a helpful AI assistant. Use the following context to answer the user's question:\n\nContext: {context}\n\nQuestion: {query}\nAnswer:, also make sure the answer is more than just the context and more creative"
     response = model.generate_content(prompt)
     return response.text
 
-# Function to interact with the RAG chatbot
-def chat():
-    print("RAG Chatbot is ready! Type 'exit' to end the conversation.")
-    while True:
-        user_input = input("You: ")
-        if user_input.lower() == "exit":
-            print("Chatbot: Goodbye!")
-            break
-        # Retrieve relevant documents
-        relevant_docs = retrieve_documents(user_input)
+# UI Components
+st.title("RAG Chatbot with PDF Knowledge Base")
+uploaded_pdf = st.file_uploader("Upload a PDF file as a Knowledge Base", type=["pdf"])
+if uploaded_pdf:
+    load_pdf_to_knowledge_base(uploaded_pdf)
+
+query = st.text_input("Ask a question about the uploaded PDF")
+if st.button("Get Response"):
+    if not vectorstore:
+        st.error("Please upload a PDF to create a knowledge base.")
+    else:
+        relevant_docs = retrieve_documents(query)
         context = "\n".join([doc.page_content for doc in relevant_docs])
-        print("Retrieved context:", context)  # Debugging: Print the retrieved context
-        # Generate a response using the Inference Client
-        response = generate_response(user_input, context)
-        print(f"Chatbot: {response}")
-
-# Start the chat
-if __name__ == "__main__":
-    chat()
-
-
-
+        response = generate_response(query, context)
+        st.markdown(f"**Chatbot:** {response}")
 
